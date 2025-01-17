@@ -1,0 +1,13 @@
+.{
+    .name = "localasm",
+    .version = "0.1.0",
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "assembly_helper.zig",
+        "clean_assembly.zig",
+        "README.md",
+    },
+}
