@@ -1,0 +1,13 @@
+.{
+    .name = "example",
+    .version = "0.0.0",
+    .dependencies = .{
+        .localasm = .{ .path = "../" },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

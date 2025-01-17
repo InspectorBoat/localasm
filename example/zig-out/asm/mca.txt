@@ -1,0 +1,161 @@
+Iterations:        100
+Instructions:      2900
+Total Cycles:      3484
+Total uOps:        4800
+
+Dispatch Width:    6
+uOps Per Cycle:    1.38
+IPC:               0.83
+Block RThroughput: 8.0
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 3      2     1.00           *            push	rbp
+ 1      1     0.25                        mov	rbp, rsp
+ 1      1     0.25                        mov	eax, ecx
+ 1      3     1.00                        imul	eax, ecx
+ 2      6     0.50    *                   pop	rbp
+ 3      7     1.00                  U     ret
+ 3      2     1.00           *            push	rbp
+ 3      2     1.00           *            push	rsi
+ 3      2     1.00           *            push	rdi
+ 1      1     0.25                        sub	rsp, 32
+ 1      1     0.50                        lea	rbp, [rsp + 32]
+ 1      0     0.17                        xor	esi, esi
+ 1      1     0.25                        cmp	rcx, 2
+ 1      1     0.50                        jb	.LBB1_3
+ 1      1     0.25                        mov	rdi, rcx
+ 1      1     0.50                        lea	rcx, [rdi - 2]
+ 4      3     1.00                        call	main.fib
+ 1      1     0.50                        lea	rcx, [rdi - 1]
+ 1      1     0.25                        add	rsi, rax
+ 1      1     0.25                        cmp	rdi, 3
+ 1      1     0.25                        mov	rdi, rcx
+ 1      1     0.50                        jae	.LBB1_2
+ 1      1     0.25                        add	rsi, rcx
+ 1      1     0.25                        mov	rax, rsi
+ 1      1     0.25                        add	rsp, 32
+ 2      6     0.50    *                   pop	rdi
+ 2      6     0.50    *                   pop	rsi
+ 2      6     0.50    *                   pop	rbp
+ 3      7     1.00                  U     ret
+
+
+Resources:
+[0]   - SKLDivider
+[1]   - SKLFPDivider
+[2]   - SKLPort0
+[3]   - SKLPort1
+[4]   - SKLPort2
+[5]   - SKLPort3
+[6]   - SKLPort4
+[7]   - SKLPort5
+[8]   - SKLPort6
+[9]   - SKLPort7
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    
+ -      -     7.75   7.74   3.99   4.00   5.00   7.75   7.76   3.01   
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    Instructions:
+ -      -     0.25   0.25    -      -     1.00   0.25   0.25   1.00   push	rbp
+ -      -     0.26   0.24    -      -      -     0.25   0.25    -     mov	rbp, rsp
+ -      -     0.49   0.24    -      -      -     0.27    -      -     mov	eax, ecx
+ -      -      -     1.00    -      -      -      -      -      -     imul	eax, ecx
+ -      -     0.24   0.25   0.04   0.96    -     0.26   0.25    -     pop	rbp
+ -      -     0.52    -     0.02   0.98    -     0.48   1.00    -     ret
+ -      -     0.24   0.26    -      -     1.00   0.26   0.24   1.00   push	rbp
+ -      -     0.25   0.26   0.97   0.02   1.00   0.25   0.24   0.01   push	rsi
+ -      -     0.25   0.24    -      -     1.00   0.26   0.25   1.00   push	rdi
+ -      -     0.24   0.25    -      -      -     0.25   0.26    -     sub	rsp, 32
+ -      -      -     0.28    -      -      -     0.72    -      -     lea	rbp, [rsp + 32]
+ -      -      -      -      -      -      -      -      -      -     xor	esi, esi
+ -      -     0.27   0.26    -      -      -     0.23   0.24    -     cmp	rcx, 2
+ -      -     0.74    -      -      -      -      -     0.26    -     jb	.LBB1_3
+ -      -     0.26   0.23    -      -      -     0.24   0.27    -     mov	rdi, rcx
+ -      -      -     0.27    -      -      -     0.73    -      -     lea	rcx, [rdi - 2]
+ -      -     0.75   0.49   0.01   0.99   1.00   0.01   0.75    -     call	main.fib
+ -      -      -     0.74    -      -      -     0.26    -      -     lea	rcx, [rdi - 1]
+ -      -     0.26    -      -      -      -     0.01   0.73    -     add	rsi, rax
+ -      -     0.23   0.25    -      -      -     0.26   0.26    -     cmp	rdi, 3
+ -      -     0.26   0.25    -      -      -     0.26   0.23    -     mov	rdi, rcx
+ -      -     0.74    -      -      -      -      -     0.26    -     jae	.LBB1_2
+ -      -     0.25   0.26    -      -      -     0.25   0.24    -     add	rsi, rcx
+ -      -      -     0.25    -      -      -     0.49   0.26    -     mov	rax, rsi
+ -      -     0.25   0.23    -      -      -     0.27   0.25    -     add	rsp, 32
+ -      -     0.25   0.25   0.99   0.01    -     0.25   0.25    -     pop	rdi
+ -      -     0.25   0.48   0.98   0.02    -     0.26   0.01    -     pop	rsi
+ -      -     0.48   0.01   0.96   0.04    -     0.50   0.01    -     pop	rbp
+ -      -     0.02   0.50   0.02   0.98    -     0.48   1.00    -     ret
+
+
+Timeline view:
+                    0123456789          0123456789          0123456789          0123456789
+Index     0123456789          0123456789          0123456789          0123456789          
+
+[0,0]     DeeER.    .    .    .    .    .    .    .    .    .    .    .    .    .    .   .   push	rbp
+[0,1]     D==eER    .    .    .    .    .    .    .    .    .    .    .    .    .    .   .   mov	rbp, rsp
+[0,2]     DeE--R    .    .    .    .    .    .    .    .    .    .    .    .    .    .   .   mov	eax, ecx
+[0,3]     D=eeeER   .    .    .    .    .    .    .    .    .    .    .    .    .    .   .   imul	eax, ecx
+[0,4]     .D=eeeeeeER    .    .    .    .    .    .    .    .    .    .    .    .    .   .   pop	rbp
+[0,5]     .DeeeeeeeER    .    .    .    .    .    .    .    .    .    .    .    .    .   .   ret
+[0,6]     . D======eeER  .    .    .    .    .    .    .    .    .    .    .    .    .   .   push	rbp
+[0,7]     . D========eeER.    .    .    .    .    .    .    .    .    .    .    .    .   .   push	rsi
+[0,8]     .  D=========eeER   .    .    .    .    .    .    .    .    .    .    .    .   .   push	rdi
+[0,9]     .  D===========eER  .    .    .    .    .    .    .    .    .    .    .    .   .   sub	rsp, 32
+[0,10]    .  D============eER .    .    .    .    .    .    .    .    .    .    .    .   .   lea	rbp, [rsp + 32]
+[0,11]    .  D--------------R .    .    .    .    .    .    .    .    .    .    .    .   .   xor	esi, esi
+[0,12]    .   DeE-----------R .    .    .    .    .    .    .    .    .    .    .    .   .   cmp	rcx, 2
+[0,13]    .   D=eE----------R .    .    .    .    .    .    .    .    .    .    .    .   .   jb	.LBB1_3
+[0,14]    .   DeE-----------R .    .    .    .    .    .    .    .    .    .    .    .   .   mov	rdi, rcx
+[0,15]    .   D=eE----------R .    .    .    .    .    .    .    .    .    .    .    .   .   lea	rcx, [rdi - 2]
+Truncated display due to cycle limit
+
+
+Average Wait times (based on the timeline view):
+[0]: Executions
+[1]: Average time spent waiting in a scheduler's queue
+[2]: Average time spent waiting in a scheduler's queue while ready
+[3]: Average time elapsed from WB until retire stage
+
+      [0]    [1]    [2]    [3]
+0.     10    71.8   0.1    71.1      push	rbp
+1.     10    73.1   0.0    70.2      mov	rbp, rsp
+2.     10    1.0    1.0    142.3     mov	eax, ecx
+3.     10    2.1    0.1    139.3     imul	eax, ecx
+4.     10    72.8   0.0    65.7      pop	rbp
+5.     10    1.0    1.0    135.8     ret
+6.     10    60.1   0.0    63.9      push	rbp
+7.     10    61.9   0.0    62.1      push	rsi
+8.     10    63.1   0.0    60.3      push	rdi
+9.     10    64.9   0.0    59.4      sub	rsp, 32
+10.    10    65.9   0.0    58.5      lea	rbp, [rsp + 32]
+11.    10    0.0    0.0    125.4     xor	esi, esi
+12.    10    1.0    1.0    122.6     cmp	rcx, 2
+13.    10    2.0    0.0    121.6     jb	.LBB1_3
+14.    10    1.0    1.0    122.6     mov	rdi, rcx
+15.    10    1.8    0.0    121.6     lea	rcx, [rdi - 2]
+16.    10    64.1   0.0    0.0       call	main.fib
+17.    10    1.1    0.1    162.0     lea	rcx, [rdi - 1]
+18.    10    1.0    0.9    161.9     add	rsi, rax
+19.    10    1.0    1.0    161.1     cmp	rdi, 3
+20.    10    1.1    0.0    161.0     mov	rdi, rcx
+21.    10    2.1    0.1    160.0     jae	.LBB1_2
+22.    10    1.4    0.1    160.7     add	rsi, rcx
+23.    10    2.4    0.0    159.7     mov	rax, rsi
+24.    10    62.9   0.0    99.0      add	rsp, 32
+25.    10    63.1   0.0    93.0      pop	rdi
+26.    10    69.1   0.0    87.0      pop	rsi
+27.    10    74.9   0.0    81.0      pop	rbp
+28.    10    1.2    1.2    152.9     ret
+       10    30.7   0.3    109.7     <total>
