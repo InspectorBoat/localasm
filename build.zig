@@ -45,6 +45,7 @@ pub fn addAssemblyOutput(b: *std.Build, module: *std.Build.Module, options: Asse
             .optimize = options.optimize,
             .target = options.target,
             .imports = &.{.{ .name = "main", .module = module }},
+            .omit_frame_pointer = true,
         }),
     });
 
