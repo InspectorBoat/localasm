@@ -48,6 +48,8 @@ pub fn addAssemblyOutput(b: *std.Build, module: *std.Build.Module, options: Asse
             .imports = &.{.{ .name = "main", .module = module }},
             .omit_frame_pointer = true,
         }),
+        // self-hosted cannot yet emit assembly
+        .use_llvm = true,
     });
 
     const raw_asm = assembly_helper.getEmittedAsm();
