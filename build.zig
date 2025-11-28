@@ -38,7 +38,8 @@ pub const AssemblyOutputOptions = struct {
 pub fn addAssemblyOutput(b: *std.Build, module: *std.Build.Module, options: AssemblyOutputOptions) void {
     const localasm = b.dependency("localasm", .{});
 
-    const assembly_helper = b.addStaticLibrary(.{
+    const assembly_helper = b.addLibrary(.{
+        .linkage = .static,
         .name = "assembly_helper",
         .root_module = b.createModule(.{
             .root_source_file = localasm.path("assembly_helper.zig"),

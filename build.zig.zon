@@ -1,5 +1,6 @@
 .{
-    .name = "localasm",
+    .name = .localasm,
+    .fingerprint = 0xba5eabe44851503e, // Changing this has security and trust implications.
     .version = "0.1.0",
     .dependencies = .{},
 

@@ -1,5 +1,6 @@
 .{
-    .name = "example",
+    .name = .example,
+    .fingerprint = 0x6eec9b9f4e5e07dc, // Changing this has security and trust implications.
     .version = "0.0.0",
     .dependencies = .{
         .localasm = .{ .path = "../" },

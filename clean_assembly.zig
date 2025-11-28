@@ -10,8 +10,10 @@ const LineType = enum {
 };
 
 pub fn main() !void {
-    const stdin = std.io.getStdIn().reader();
-    const stdout = std.io.getStdOut();
+    var outbuf: [64]u8 = undefined;
+    var inbuf: [64]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&outbuf);
+    var stdin = std.fs.File.stdin().reader(&inbuf);
 
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     const alloc = gpa.allocator();
@@ -26,10 +28,18 @@ pub fn main() !void {
 
     var lines: std.ArrayListUnmanaged(struct { type: LineType, text: []const u8 }) = .empty;
     var used_labels: std.StringHashMapUnmanaged(void) = .empty;
+    var eof = false;
+    while (!eof) {
+        var line: std.Io.Writer.Allocating = .init(alloc);
+        defer line.deinit();
 
-    while (true) {
-        const line_text =
-            stdin.readUntilDelimiterAlloc(alloc, '\n', std.math.maxInt(usize)) catch break;
+        _ = stdin.interface.streamDelimiter(&line.writer, '\n') catch |err| switch (err) {
+            error.EndOfStream => eof = true,
+            else => return err,
+        };
+        if (!eof) std.debug.assert(try stdin.interface.takeByte() == '\n');
+
+        const line_text = line.written();
         const line_type = classifyLine(
             std.mem.trimLeft(u8, line_text, "\t"),
         );
@@ -48,10 +58,9 @@ pub fn main() !void {
                 if (search_index >= end_index) break;
             }
         }
-        try lines.append(alloc, .{ .type = line_type, .text = line_text });
+        try lines.append(alloc, .{ .type = line_type, .text = try line.toOwnedSlice() });
     }
-
-    if (add_intel_directive) _ = try stdout.write(".intel_syntax noprefix\n");
+    if (add_intel_directive) _ = try stdout.interface.writeAll(".intel_syntax noprefix\n");
     var in_used_label = false;
     var in_export = false;
     for (lines.items) |line| {
@@ -59,36 +68,39 @@ pub fn main() !void {
             .empty => {},
             .directive => {
                 if ((in_used_label or in_export) and isValidDirective(line.text)) {
-                    _ = try stdout.write(line.text);
-                    _ = try stdout.write("\n");
+                    _ = try stdout.interface.writeAll(line.text);
+                    _ = try stdout.interface.writeAll("\n");
                 }
             },
             .label => {
                 in_export = false;
                 const stripped = std.mem.trimLeft(u8, line.text, "\t");
                 if (used_labels.contains(stripped[0 .. stripped.len - 1])) {
-                    _ = try stdout.write(line.text);
-                    _ = try stdout.write("\n");
+                    _ = try stdout.interface.writeAll(line.text);
+                    _ = try stdout.interface.writeAll("\n");
+
                     in_used_label = true;
                 } else {
                     in_used_label = false;
                 }
             },
             .instruction => {
-                _ = try stdout.write(line.text);
-                _ = try stdout.write("\n");
+                _ = try stdout.interface.writeAll(line.text);
+                _ = try stdout.interface.writeAll("\n");
             },
             .@"export" => {
                 in_export = true;
-                _ = try stdout.write("\n");
-                _ = try stdout.write(line.text);
-                _ = try stdout.write("\n");
+
+                _ = try stdout.interface.writeAll("\n");
+                _ = try stdout.interface.writeAll(line.text);
+                _ = try stdout.interface.writeAll("\n");
             },
             .dummy_export => {
                 in_export = false;
             },
         }
     }
+    _ = try stdout.interface.flush();
 }
 
 pub fn isValidDirective(line: []const u8) bool {
