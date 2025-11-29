@@ -10,6 +10,10 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(asm_cleaner);
+
+    _ = b.addModule("localasm", .{
+        .root_source_file = b.path("assembly_helper.zig"),
+    });
 }
 
 pub const AssemblyOutputOptions = struct {
@@ -35,24 +39,14 @@ pub const AssemblyOutputOptions = struct {
     mca_file_name: []const u8 = "mca.txt",
 };
 
-pub fn addAssemblyOutput(b: *std.Build, module: *std.Build.Module, options: AssemblyOutputOptions) void {
-    const localasm = b.dependency("localasm", .{});
+pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, options: AssemblyOutputOptions) void {
+    const localasm = b.lazyDependency("localasm", .{}) orelse return;
 
-    const assembly_helper = b.addLibrary(.{
-        .linkage = .static,
-        .name = "assembly_helper",
-        .root_module = b.createModule(.{
-            .root_source_file = localasm.path("assembly_helper.zig"),
-            .optimize = options.optimize,
-            .target = options.target,
-            .imports = &.{.{ .name = "main", .module = module }},
-            .omit_frame_pointer = true,
-        }),
-        // self-hosted cannot yet emit assembly
-        .use_llvm = true,
-    });
+    if (compile.use_llvm == null orelse !compile.use_llvm.?) {
+        std.log.warn("use_llvm should be enabled, as self-hosted backend cannot emit assembly (yet)", .{});
+    }
 
-    const raw_asm = assembly_helper.getEmittedAsm();
+    const raw_asm = compile.getEmittedAsm();
 
     // Create program to clean up assembly file
     const asm_cleaner = localasm.artifact("assembly_cleaner");

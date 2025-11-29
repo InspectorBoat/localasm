@@ -1,18 +1,22 @@
 const std = @import("std");
-const size = 176;
-const mask_len = 17;
+const localasm = @import("localasm");
 
-// If functions_to_analyze does not exist, all functions found will be analyzed instead
-pub const functions_to_analyze = .{ square, fib };
-
-// Since this function is not in functions_to_analyze, it will not be emitted into assembly
-pub fn main() !void {
-    std.debug.print("{}\n", .{square(100)});
+comptime {
+    localasm.referenceFunctions(.{ square, fib, @"memcpy@PLT" });
 }
+// Since this function is not in functions_to_analyze, it will not be emitted into assembly
+// pub fn main() !void {
+//     std.debug.print("{}\n", .{square(100)});
+// }
+
+pub const panic = localasm.labeled_panic;
 
 pub fn square(n: i32) i32 {
+    @setRuntimeSafety(true);
     return n * n;
 }
+
+pub fn @"memcpy@PLT"() void {}
 
 pub noinline fn fib(n: usize) usize {
     return switch (n) {

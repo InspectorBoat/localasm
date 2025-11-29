@@ -15,8 +15,8 @@ pub fn main() !void {
     var stdout = std.fs.File.stdout().writer(&outbuf);
     var stdin = std.fs.File.stdin().reader(&inbuf);
 
-    var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
-    const alloc = gpa.allocator();
+    var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    const alloc = arena.allocator();
 
     var args = try std.process.argsWithAllocator(alloc);
     _ = args.next();

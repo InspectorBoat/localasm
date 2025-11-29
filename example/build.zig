@@ -9,6 +9,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{
+            .name = "localasm",
+            .module = b.dependency("localasm", .{}).module("localasm"),
+        }},
     });
 
     const exe = b.addExecutable(.{
@@ -29,5 +33,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    localasm.addAssemblyOutput(b, exe_mod, .{ .target = target });
+    localasm.addAssemblyOutput(
+        b,
+        b.addLibrary(.{
+            .linkage = .dynamic,
+            .name = "assembly_helper",
+            .root_module = exe_mod,
+            .use_llvm = true,
+        }),
+        .{ .target = target, .enable_raw_asm_step = true },
+    );
 }
