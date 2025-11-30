@@ -1,6 +1,8 @@
 const std = @import("std");
 const localasm = @import("localasm");
 
+// clear; zig build asm && zig build rawasm && diff zig-out/asm/asm.s zig-out/asm/rawasm.s -y --color=always | less -R
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -41,6 +43,6 @@ pub fn build(b: *std.Build) void {
             .root_module = exe_mod,
             .use_llvm = true,
         }),
-        .{ .target = target, .enable_raw_asm_step = true },
+        .{ .raw_asm_step_info = .{} },
     );
 }

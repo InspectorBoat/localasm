@@ -17,26 +17,29 @@ pub fn build(b: *std.Build) void {
 }
 
 pub const AssemblyOutputOptions = struct {
-    optimize: std.builtin.OptimizeMode = .ReleaseFast,
-    target: std.Build.ResolvedTarget,
-
-    // Directory to install generated assembly and analysis files to
+    /// Directory to install generated assembly and analysis files to
     install_dir: std.Build.InstallDir = .{ .custom = "asm" },
 
-    // whether to enable a step that outputs raw assembly (extremely noisy)
-    enable_raw_asm_step: bool = false,
-    raw_asm_step_name: []const u8 = "rawasm",
-    raw_asm_file_name: []const u8 = "rawasm.s",
+    /// Output raw assembly (extremely noisy, disabled by default)
+    raw_asm_step_info: ?struct {
+        name: []const u8 = "rawasm",
+        output_file: []const u8 = "rawasm.s",
+    } = null,
 
-    // whether to enable the step that outputs assembly stripped of unused labels and directives
-    enable_clean_asm_step: bool = true,
-    clean_asm_step_name: []const u8 = "asm",
-    clean_asm_file_name: []const u8 = "asm.s",
+    /// Output assembly stripped of unused labels and directives
+    clean_asm_step_info: ?struct {
+        name: []const u8 = "asm",
+        output_file: []const u8 = "asm.s",
+    } = .{},
 
-    // whether to enable a step that sends the assembly to llvm-mca for analysis
-    enable_mca_step: bool = true,
-    mca_step_name: []const u8 = "mca",
-    mca_file_name: []const u8 = "mca.txt",
+    /// Send cleaned assembly to llvm-mca for analysis
+    mca_step_info: ?struct {
+        name: []const u8 = "mca",
+        ouput_file: []const u8 = "mca.txt",
+        /// Pass arguments to llvm-mca
+        args: ?[]const []const u8 = null,
+        command_path: []const u8 = "llvm-mca",
+    } = .{},
 };
 
 pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, options: AssemblyOutputOptions) void {
@@ -48,44 +51,48 @@ pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, option
 
     const raw_asm = compile.getEmittedAsm();
 
-    // Create program to clean up assembly file
-    const asm_cleaner = localasm.artifact("assembly_cleaner");
-
-    // Clean up assembly file
-    const clean_asm = b.addRunArtifact(asm_cleaner);
-    clean_asm.setStdIn(.{ .lazy_path = raw_asm });
-
-    // Install cleaned assembly file
-    if (options.enable_clean_asm_step) {
-        const cleaned_asm_step = b.step(options.clean_asm_step_name, "Install cleaned assembly output");
-        cleaned_asm_step.dependOn(&b.addInstallFileWithDir(
-            clean_asm.captureStdOut(),
-            options.install_dir,
-            options.clean_asm_file_name,
-        ).step);
+    // Install raw assembly output
+    if (options.raw_asm_step_info) |raw_asm_step_info| {
+        const raw_asm_step = b.step(raw_asm_step_info.name, "Install raw assembly output");
+        raw_asm_step.dependOn(
+            &b.addInstallFileWithDir(
+                raw_asm,
+                options.install_dir,
+                raw_asm_step_info.output_file,
+            ).step,
+        );
     }
 
-    // Install raw assembly output
-    if (options.enable_raw_asm_step) {
-        const raw_asm_step = b.step(options.raw_asm_step_name, "Install raw assembly output");
-        raw_asm_step.dependOn(&b.addInstallFileWithDir(
-            raw_asm,
-            options.install_dir,
-            options.raw_asm_file_name,
-        ).step);
+    // Get program to clean up assembly file - used for both clean_asm and mca steps
+    const asm_cleaner = localasm.artifact("assembly_cleaner");
+
+    // Install cleaned assembly file
+    if (options.clean_asm_step_info) |clean_asm_step_info| {
+        // Clean up assembly file
+        const run_asm_cleaner = b.addRunArtifact(asm_cleaner);
+        run_asm_cleaner.setStdIn(.{ .lazy_path = raw_asm });
+
+        const clean_asm_step = b.step(clean_asm_step_info.name, "Install cleaned assembly output");
+        clean_asm_step.dependOn(
+            &b.addInstallFileWithDir(
+                run_asm_cleaner.captureStdOut(),
+                options.install_dir,
+                clean_asm_step_info.output_file,
+            ).step,
+        );
     }
 
     // Install llvm-mca analysis
-    if (options.enable_mca_step) {
+    if (options.mca_step_info) |mca_step_info| {
         // Clean assembly, but this time add .intel_syntax to the beginning so llvm-mca can recognize it
-        const clean_asm_with_intel_directive = b.addRunArtifact(asm_cleaner);
-        clean_asm_with_intel_directive.setStdIn(.{ .lazy_path = raw_asm });
-        clean_asm_with_intel_directive.addArg("--intelsyntaxdirective");
+        const run_asm_cleaner = b.addRunArtifact(asm_cleaner);
+        run_asm_cleaner.setStdIn(.{ .lazy_path = raw_asm });
+        run_asm_cleaner.addArg("--intelsyntaxdirective");
 
-        // Run llvm-mca analysis, while forward arguments to it
-        const run_mca = b.addSystemCommand(&.{"llvm-mca"});
-        run_mca.setStdIn(.{ .lazy_path = clean_asm_with_intel_directive.captureStdOut() });
-        if (b.args) |args| {
+        // Run llvm-mca analysis
+        const run_mca = b.addSystemCommand(&.{mca_step_info.command_path});
+        run_mca.setStdIn(.{ .lazy_path = run_asm_cleaner.captureStdOut() });
+        if (mca_step_info.args) |args| {
             run_mca.addArgs(args);
         }
 
@@ -93,10 +100,10 @@ pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, option
         const install_mca_analysis = b.addInstallFileWithDir(
             mca_analysis,
             options.install_dir,
-            options.mca_file_name,
+            mca_step_info.ouput_file,
         );
 
-        const mca_step = b.step(options.mca_step_name, "Install llvm-mca analysis");
+        const mca_step = b.step(mca_step_info.name, "Install llvm-mca analysis");
         mca_step.dependOn(&install_mca_analysis.step);
     }
 }
