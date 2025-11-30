@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn referenceFunctions(functions: anytype) void {
     for (functions, 0..) |function, i| {
         const dummy: *const anyopaque = @ptrCast(&function);
-        @export(&dummy, .{ .name = "export_helper_dummy#" ++ std.fmt.comptimePrint("{}", .{i}), .visibility = .hidden });
+        @export(&dummy, .{ .name = "export_helper_dummy#" ++ std.fmt.comptimePrint("{}", .{i}) });
     }
 }
 
@@ -77,7 +77,7 @@ pub const labeled_panic = struct {
         @trap();
     }
 
-    pub fn integerOverflow() noreturn {
+    pub noinline fn integerOverflow() noreturn {
         @branchHint(.cold);
         @trap();
     }
