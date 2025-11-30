@@ -11,6 +11,17 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(asm_cleaner);
 
+    const test_asm_cleaner = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("clean_assembly.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+
+    _ = b.step("test", "Run unit tests")
+        .dependOn(&b.addRunArtifact(test_asm_cleaner).step);
+
     _ = b.addModule("localasm", .{
         .root_source_file = b.path("assembly_helper.zig"),
     });

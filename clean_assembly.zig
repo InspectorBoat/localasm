@@ -135,19 +135,31 @@ pub fn classifyLine(line: []const u8) LineType {
     if (line.len == 0) return .empty;
     const first = line[0];
     const last = line[line.len - 1];
-    if (first == '.') {
-        if (last == ':') {
-            return .label;
-        } else {
-            return .directive;
-        }
-    } else if (last == ':') {
-        if (std.mem.startsWith(u8, line, "\"export_helper_dummy#")) {
-            return .dummy_export;
-        } else {
-            return .@"export";
-        }
-    } else {
+    if (last == ':')
+        return .label
+    else if (first == '.')
+        return .directive
+    else if (last == ':')
+        if (std.mem.startsWith(u8, line, "\"export_helper_dummy#"))
+            return .dummy_export
+        else
+            return .@"export"
+    else
         return .instruction;
-    }
+}
+
+test classifyLine {
+    try std.testing.expectEqual(.empty, classifyLine(""));
+
+    try std.testing.expectEqual(.label, classifyLine(".foobar:"));
+
+    try std.testing.expectEqual(.label, classifyLine("foobar:"));
+
+    try std.testing.expectEqual(.label, classifyLine("\"quux\":"));
+
+    try std.testing.expectEqual(.label, classifyLine("\"quux\":"));
+
+    try std.testing.expectEqual(.instruction, classifyLine("mov r14, r13"));
+
+    try std.testing.expectEqual(.empty, classifyLine("#APP"));
 }
