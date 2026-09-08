@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.addModule("assembly_cleaner", .{
             .root_source_file = b.path("clean_assembly.zig"),
             .target = b.graph.host,
-            .optimize = .ReleaseFast,
+            .optimize = .Debug,
         }),
     });
     b.installArtifact(asm_cleaner);
@@ -86,7 +86,7 @@ pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, option
         const clean_asm_step = b.step(clean_asm_step_info.name, "Install cleaned assembly output");
         clean_asm_step.dependOn(
             &b.addInstallFileWithDir(
-                run_asm_cleaner.captureStdOut(),
+                run_asm_cleaner.captureStdOut(.{}),
                 options.install_dir,
                 clean_asm_step_info.output_file,
             ).step,
@@ -102,12 +102,12 @@ pub fn addAssemblyOutput(b: *std.Build, compile: *std.Build.Step.Compile, option
 
         // Run llvm-mca analysis
         const run_mca = b.addSystemCommand(&.{mca_step_info.command_path});
-        run_mca.setStdIn(.{ .lazy_path = run_asm_cleaner.captureStdOut() });
+        run_mca.setStdIn(.{ .lazy_path = run_asm_cleaner.captureStdOut(.{}) });
         if (mca_step_info.args) |args| {
             run_mca.addArgs(args);
         }
-
-        const mca_analysis = run_mca.captureStdOut();
+        _ = run_mca.captureStdErr(.{});
+        const mca_analysis = run_mca.captureStdOut(.{});
         const install_mca_analysis = b.addInstallFileWithDir(
             mca_analysis,
             options.install_dir,

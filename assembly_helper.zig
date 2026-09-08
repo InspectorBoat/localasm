@@ -1,10 +1,18 @@
 const std = @import("std");
 
+const b74a082f27dda9192b2a26683f0031: i32 = 0;
+
 pub fn referenceFunctions(functions: anytype) void {
+    var pointers: []const *const anyopaque = &.{@ptrCast(&b74a082f27dda9192b2a26683f0031)};
     for (functions, 0..) |function, i| {
+        _ = i;
         const dummy: *const anyopaque = @ptrCast(&function);
-        @export(&dummy, .{ .name = "export_helper_dummy#" ++ std.fmt.comptimePrint("{}", .{i}) });
+        pointers = pointers ++ .{dummy};
     }
+    const pointers_array = pointers[0..].*;
+    @export(&pointers_array, .{
+        .name = "dummy_export",
+    });
 }
 
 /// similar to std.debug.no_panic, but marked noinline so the type of panic is still discernable

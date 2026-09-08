@@ -5,102 +5,147 @@ const LineType = enum {
     directive,
     label,
     instruction,
-    @"export",
     dummy_export,
+    dummy_export_end,
+    comment,
 };
 
-pub fn main() !void {
-    var outbuf: [64]u8 = undefined;
-    var inbuf: [64]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&outbuf);
-    var stdin = std.fs.File.stdin().reader(&inbuf);
+pub const std_options: std.Options = .{ .log_level = .err };
 
-    var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
-    const alloc = arena.allocator();
+pub const Options = struct {
+    add_intel_directive: bool = false,
+    debug_line_types: bool = false,
+    input: union(enum) { file: std.Io.File.Reader, stdin: std.Io.File.Reader },
 
-    var args = try std.process.argsWithAllocator(alloc);
-    _ = args.next();
-
-    const add_intel_directive = if (args.next()) |arg|
-        std.mem.eql(u8, arg, "--intelsyntaxdirective")
-    else
-        false;
-
-    var lines: std.ArrayListUnmanaged(struct { type: LineType, text: []const u8 }) = .empty;
-    var used_labels: std.StringHashMapUnmanaged(void) = .empty;
-    var eof = false;
-    while (!eof) {
-        var line: std.Io.Writer.Allocating = .init(alloc);
-        defer line.deinit();
-
-        _ = stdin.interface.streamDelimiter(&line.writer, '\n') catch |err| switch (err) {
-            error.EndOfStream => eof = true,
-            else => return err,
-        };
-        if (!eof) std.debug.assert(try stdin.interface.takeByte() == '\n');
-
-        const line_text = line.written();
-        const line_type = classifyLine(
-            std.mem.trimLeft(u8, line_text, "\t"),
-        );
-
-        if (line_type == .instruction) {
-            var search_index: usize = 0;
-            while (std.mem.indexOfScalar(u8, line_text[search_index..], '.')) |index| {
-                if (index == line_text.len - 1) break;
-
-                const end_index = blk: for (line_text[index + 1 ..], index + 1..) |char, i| {
-                    if (!std.ascii.isAlphanumeric(char) and char != '_') break :blk i - 1;
-                } else line_text.len - 1;
-
-                try used_labels.put(alloc, line_text[index .. end_index + 1], void{});
-                search_index = end_index + 1;
-                if (search_index >= end_index) break;
-            }
-        }
-        try lines.append(alloc, .{ .type = line_type, .text = try line.toOwnedSlice() });
-    }
-    if (add_intel_directive) _ = try stdout.interface.writeAll(".intel_syntax noprefix\n");
-    var in_used_label = false;
-    var in_export = false;
-    for (lines.items) |line| {
-        switch (line.type) {
-            .empty => {},
-            .directive => {
-                if ((in_used_label or in_export) and isValidDirective(line.text)) {
-                    _ = try stdout.interface.writeAll(line.text);
-                    _ = try stdout.interface.writeAll("\n");
-                }
+    pub fn deinit(self: @This(), io: std.Io) void {
+        switch (self.input) {
+            .file => |reader| {
+                reader.file.close(io);
             },
-            .label => {
-                in_export = false;
-                const stripped = std.mem.trimLeft(u8, line.text, "\t");
-                if (used_labels.contains(stripped[0 .. stripped.len - 1])) {
-                    _ = try stdout.interface.writeAll(line.text);
-                    _ = try stdout.interface.writeAll("\n");
+            else => {},
+        }
+    }
 
-                    in_used_label = true;
-                } else {
-                    in_used_label = false;
+    pub fn inputHandle(self: *@This()) *std.Io.Reader {
+        switch (self.input) {
+            .file, .stdin => |*reader| return &reader.interface,
+        }
+    }
+};
+
+pub fn processArgs(io: std.Io, arena: std.mem.Allocator, args: std.process.Args, input_buf: []u8) !Options {
+    var options: Options = .{ .input = undefined };
+    var have_input = false;
+    for ((try args.toSlice(arena))[1..]) |arg| {
+        if (std.mem.eql(u8, arg, "--intelsyntaxdirective")) {
+            options.add_intel_directive = true;
+        } else if (std.mem.eql(u8, arg, "--debuglinetypes")) {
+            options.debug_line_types = true;
+        } else {
+            if (have_input) return error.MultipleInputFiles;
+            if (std.mem.eql(u8, arg, "-")) {
+                options.input = .{ .stdin = std.Io.File.stdin().reader(io, input_buf) };
+            } else {
+                options.input = .{ .file = (try std.Io.Dir.cwd().openFile(io, arg, .{})).reader(io, input_buf) };
+            }
+            have_input = true;
+        }
+    }
+    if (!have_input) options.input = .{ .stdin = std.Io.File.stdin().reader(io, input_buf) };
+    return options;
+}
+
+pub fn readLeaky(alloc: std.mem.Allocator, input: *std.Io.Reader) ![]const []const u8 {
+    const input_raw = try input.allocRemaining(alloc, .unlimited);
+    var line_iterator = std.mem.splitScalar(u8, input_raw, '\n');
+    var lines: std.ArrayList([]const u8) = .empty;
+    while (line_iterator.next()) |line| {
+        try lines.append(alloc, line);
+    }
+    return lines.items;
+}
+
+const LineAndType = struct {
+    type: LineType,
+    text: []const u8,
+    pub fn trimmed(self: @This()) []const u8 {
+        return std.mem.trim(u8, self.text, "\t ");
+    }
+};
+
+/// TODO: make memory usage patterns not dogshit
+pub fn main(init: std.process.Init) !void {
+    var output_buffer: [64]u8 = undefined;
+    var input_buffer: [64]u8 = undefined;
+
+    var options = try processArgs(init.io, init.arena.allocator(), init.minimal.args, &input_buffer);
+    defer options.deinit(init.io);
+
+    const input = options.inputHandle();
+    var output_writer = std.Io.File.stdout().writer(init.io, &output_buffer);
+    const output = &output_writer.interface;
+
+    var lines_and_types: std.ArrayList(LineAndType) = .empty;
+
+    const lines = try readLeaky(init.arena.allocator(), input);
+
+    // first, classify all lines as directive, label, instruction, empty, or dummy
+    for (lines) |line| {
+        const line_type = classifyLine(std.mem.trimStart(u8, line, "\t"));
+
+        try lines_and_types.append(init.arena.allocator(), .{ .type = line_type, .text = line });
+    }
+
+    var exported_functions: std.StringHashMapUnmanaged(void) = .empty;
+    try findExportedFunctions(lines_and_types.items, &exported_functions, init.arena.allocator());
+
+    var used_labels: std.StringHashMapUnmanaged(void) = .empty;
+    try findUsedLabels(lines_and_types.items, &exported_functions, &used_labels, init.arena.allocator());
+
+    if (options.add_intel_directive) _ = try output.writeAll(".intel_syntax noprefix\n");
+    // print constant directives following used labels;
+    var in_used_label = false;
+    for (lines_and_types.items) |line| {
+        if (options.debug_line_types) {
+            try output.writeAll(switch (line.type) {
+                .directive => "drect",
+                .dummy_export => "dummy",
+                .dummy_export_end => "dummy",
+                .empty => "empty",
+                .instruction => "instr",
+                .label => "label",
+                .comment => "comment",
+            });
+            _ = try output.writeAll("\t");
+            try output.writeAll(line.text);
+            _ = try output.writeAll("\n");
+            continue;
+        }
+        switch (line.type) {
+            .label => {
+                const stripped = std.mem.trimStart(u8, line.text, "\t");
+                const is_used_label = used_labels.contains(stripped[0 .. stripped.len - 1]);
+                const is_exported_function = exported_functions.contains(stripped[0 .. stripped.len - 1]);
+                in_used_label = is_used_label;
+                if (is_used_label or is_exported_function) {
+                    _ = try output.writeAll(line.text);
+                    _ = try output.writeAll("\n");
                 }
             },
             .instruction => {
-                _ = try stdout.interface.writeAll(line.text);
-                _ = try stdout.interface.writeAll("\n");
+                _ = try output.writeAll(line.text);
+                _ = try output.writeAll("\n");
             },
-            .@"export" => {
-                in_export = true;
-
-                _ = try stdout.interface.writeAll("\n");
-                _ = try stdout.interface.writeAll(line.text);
-                _ = try stdout.interface.writeAll("\n");
+            .directive => {
+                if (in_used_label and isValidDirective(line.text)) {
+                    _ = try output.writeAll(line.text);
+                    _ = try output.writeAll("\n");
+                }
             },
-            .dummy_export => {
-                in_export = false;
-            },
+            .empty, .dummy_export, .dummy_export_end, .comment => {},
         }
     }
-    _ = try stdout.interface.flush();
+    _ = try output.flush();
 }
 
 pub fn isValidDirective(line: []const u8) bool {
@@ -124,7 +169,7 @@ pub fn isValidDirective(line: []const u8) bool {
         ".value",
         ".zero",
     };
-    const stripped = std.mem.trimLeft(u8, line, "\t");
+    const stripped = std.mem.trimStart(u8, line, "\t");
 
     for (valid_directives) |valid_directive| {
         if (std.mem.startsWith(u8, stripped, valid_directive)) return true;
@@ -135,17 +180,76 @@ pub fn classifyLine(line: []const u8) LineType {
     if (line.len == 0) return .empty;
     const first = line[0];
     const last = line[line.len - 1];
-    if (last == ':')
+    if (std.mem.eql(u8, line, ".quad\tassembly_helper.b74a082f27dda9192b2a26683f0031"))
+        return .dummy_export
+    else if (std.mem.startsWith(u8, line, "dummy_export = "))
+        return .dummy_export_end
+    else if (last == ':')
         return .label
     else if (first == '.')
         return .directive
-    else if (last == ':')
-        if (std.mem.startsWith(u8, line, "\"export_helper_dummy#"))
-            return .dummy_export
-        else
-            return .@"export"
+    else if (first == '#')
+        return .comment
     else
         return .instruction;
+}
+
+pub fn findExportedFunctions(lines: []const LineAndType, exported_functions: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) !void {
+    var in_exports: bool = false;
+    for (lines) |line| {
+        if (in_exports) {
+            if (std.mem.startsWith(u8, line.trimmed(), ".quad\t")) {
+                try exported_functions.put(alloc, line.trimmed()[".quad\t".len..], {});
+            } else return;
+        }
+        if (line.type == .dummy_export) in_exports = true;
+    }
+}
+
+pub fn findUsedLabels(lines: []const LineAndType, exported_functions: *const std.StringHashMapUnmanaged(void), used_labels: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) !void {
+    // find function lines
+    var in_function = false;
+    for (lines) |*line| {
+        switch (line.type) {
+            .label => if (exported_functions.contains(line.trimmed()[0 .. line.trimmed().len - 1])) {
+                std.log.debug("start of function at {s}", .{line.text});
+                std.debug.assert(!in_function);
+                in_function = true;
+            },
+            .instruction => {
+                if (in_function) {
+                    var search_index: usize = 0;
+                    while (std.mem.indexOfScalar(u8, line.text[search_index..], '.')) |index| {
+                        if (index == line.text.len - 1) break;
+
+                        const end_index = blk: for (line.text[index + 1 ..], index + 1..) |char, i| {
+                            if (!std.ascii.isAlphanumeric(char) and char != '_') break :blk i - 1;
+                        } else line.text.len - 1;
+
+                        std.log.debug("uses label {s}", .{line.text[index .. end_index + 1]});
+                        try used_labels.put(alloc, line.text[index .. end_index + 1], void{});
+
+                        search_index = end_index + 1;
+                        if (search_index >= end_index) break;
+                    }
+                }
+            },
+            .empty => {
+                if (in_function) {
+                    in_function = false;
+                    std.log.debug("function end", .{});
+                    std.log.warn("function ended before .cfi_endproc! did llvm output format change?", .{});
+                }
+            },
+            .directive => {
+                if (in_function and std.mem.eql(u8, line.trimmed(), ".cfi_endproc")) {
+                    in_function = false;
+                    std.log.debug("function end", .{});
+                }
+            },
+            else => {},
+        }
+    }
 }
 
 test classifyLine {
@@ -161,5 +265,5 @@ test classifyLine {
 
     try std.testing.expectEqual(.instruction, classifyLine("mov r14, r13"));
 
-    try std.testing.expectEqual(.empty, classifyLine("#APP"));
+    try std.testing.expectEqual(.comment, classifyLine("#APP"));
 }

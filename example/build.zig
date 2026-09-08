@@ -2,7 +2,7 @@ const std = @import("std");
 const localasm = @import("localasm");
 
 // clear; zig build asm && zig build rawasm && diff zig-out/asm/asm.s zig-out/asm/rawasm.s -y --color=always | less -R
-
+// clear; cd ..; zig build; cd example; zig build rawasm -Doptimize=ReleaseFast && zig build asm -Doptimize=ReleaseFast && cat zig-out/asm/rawasm.s | ../zig-out/bin/assembly_cleaner --debuglinetypes | diff -y --color=always zig-out/asm/rawasm.s - | less -R
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -43,6 +43,11 @@ pub fn build(b: *std.Build) void {
             .root_module = exe_mod,
             .use_llvm = true,
         }),
-        .{ .raw_asm_step_info = .{} },
+        .{ .raw_asm_step_info = .{}, .mca_step_info = .{ .args = &.{"--timeline"} } },
     );
+
+    const _test = b.addTest(.{ .root_module = exe_mod });
+    const run_test = b.addRunArtifact(_test);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_test.step);
 }
