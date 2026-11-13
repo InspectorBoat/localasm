@@ -80,6 +80,11 @@ pub const labeled_panic = struct {
         @trap();
     }
 
+    pub noinline fn unexpectedErrorCode(_: anyerror) noreturn {
+        @branchHint(.cold);
+        @trap();
+    }
+
     pub noinline fn integerOutOfBounds() noreturn {
         @branchHint(.cold);
         @trap();
@@ -146,6 +151,11 @@ pub const labeled_panic = struct {
     }
 
     pub noinline fn noreturnReturned() noreturn {
+        @branchHint(.cold);
+        @trap();
+    }
+
+    pub noinline fn loadUninstantiableType() noreturn {
         @branchHint(.cold);
         @trap();
     }

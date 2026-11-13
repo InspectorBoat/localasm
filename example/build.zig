@@ -1,13 +1,11 @@
 const std = @import("std");
 const localasm = @import("localasm");
 
-// clear; zig build asm && zig build rawasm && diff zig-out/asm/asm.s zig-out/asm/rawasm.s -y --color=always | less -R
-// clear; cd ..; zig build; cd example; zig build rawasm -Doptimize=ReleaseFast && zig build asm -Doptimize=ReleaseFast && cat zig-out/asm/rawasm.s | ../zig-out/bin/assembly_cleaner --debuglinetypes | diff -y --color=always zig-out/asm/rawasm.s - | less -R
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe_mod = b.createModule(.{
+    const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -17,37 +15,32 @@ pub fn build(b: *std.Build) void {
         }},
     });
 
-    const exe = b.addExecutable(.{
-        .name = "example",
-        .root_module = exe_mod,
+    const lib = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "assembly_helper",
+        .root_module = mod,
+        .use_llvm = true,
     });
 
-    b.installArtifact(exe);
-
-    const run_cmd = b.addRunArtifact(exe);
-
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
-
-    localasm.addAssemblyOutput(
+    const @"asm" = localasm.addAsm(
         b,
-        b.addLibrary(.{
-            .linkage = .dynamic,
-            .name = "assembly_helper",
-            .root_module = exe_mod,
-            .use_llvm = true,
-        }),
-        .{ .raw_asm_step_info = .{}, .mca_step_info = .{ .args = &.{"--timeline"} } },
+        lib,
+        .bin,
+        "asm.s",
     );
+    b.step("asm", "Install assembly output").dependOn(&@"asm".step);
 
-    const _test = b.addTest(.{ .root_module = exe_mod });
-    const run_test = b.addRunArtifact(_test);
+    const mca = localasm.addMca(
+        b,
+        lib,
+        null,
+        .bin,
+        "mca.txt",
+    );
+    b.step("mca", "Install llvm-mca output").dependOn(&mca.step);
+
+    const @"test" = b.addTest(.{ .root_module = mod });
+    const run_test = b.addRunArtifact(@"test");
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_test.step);
 }

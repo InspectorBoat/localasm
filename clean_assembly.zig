@@ -10,7 +10,7 @@ const LineType = enum {
     comment,
 };
 
-pub const std_options: std.Options = .{ .log_level = .err };
+pub const std_options: std.Options = .{ .log_level = .warn };
 
 pub const Options = struct {
     add_intel_directive: bool = false,
@@ -96,10 +96,10 @@ pub fn main(init: std.process.Init) !void {
         try lines_and_types.append(init.arena.allocator(), .{ .type = line_type, .text = line });
     }
 
-    var exported_functions: std.StringHashMapUnmanaged(void) = .empty;
+    var exported_functions: std.array_hash_map.String(void) = .empty;
     try findExportedFunctions(lines_and_types.items, &exported_functions, init.arena.allocator());
 
-    var used_labels: std.StringHashMapUnmanaged(void) = .empty;
+    var used_labels: std.array_hash_map.String(void) = .empty;
     try findUsedLabels(lines_and_types.items, &exported_functions, &used_labels, init.arena.allocator());
 
     if (options.add_intel_directive) _ = try output.writeAll(".intel_syntax noprefix\n");
@@ -194,7 +194,7 @@ pub fn classifyLine(line: []const u8) LineType {
         return .instruction;
 }
 
-pub fn findExportedFunctions(lines: []const LineAndType, exported_functions: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) !void {
+pub fn findExportedFunctions(lines: []const LineAndType, exported_functions: *std.array_hash_map.String(void), alloc: std.mem.Allocator) !void {
     var in_exports: bool = false;
     for (lines) |line| {
         if (in_exports) {
@@ -206,7 +206,7 @@ pub fn findExportedFunctions(lines: []const LineAndType, exported_functions: *st
     }
 }
 
-pub fn findUsedLabels(lines: []const LineAndType, exported_functions: *const std.StringHashMapUnmanaged(void), used_labels: *std.StringHashMapUnmanaged(void), alloc: std.mem.Allocator) !void {
+pub fn findUsedLabels(lines: []const LineAndType, exported_functions: *const std.array_hash_map.String(void), used_labels: *std.array_hash_map.String(void), alloc: std.mem.Allocator) !void {
     // find function lines
     var in_function = false;
     for (lines) |*line| {
@@ -227,7 +227,7 @@ pub fn findUsedLabels(lines: []const LineAndType, exported_functions: *const std
                         } else line.text.len - 1;
 
                         std.log.debug("uses label {s}", .{line.text[index .. end_index + 1]});
-                        try used_labels.put(alloc, line.text[index .. end_index + 1], void{});
+                        try used_labels.put(alloc, line.text[index .. end_index + 1], {});
 
                         search_index = end_index + 1;
                         if (search_index >= end_index) break;
