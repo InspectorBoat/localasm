@@ -8,6 +8,18 @@ const LineType = enum {
     dummy_export,
     dummy_export_end,
     comment,
+
+    pub fn toString(self: @This()) []const u8 {
+        return switch (self) {
+            .directive => "drect",
+            .dummy_export => "dummy",
+            .dummy_export_end => "dummy",
+            .empty => "empty",
+            .instruction => "instr",
+            .label => "label",
+            .comment => "comment",
+        };
+    }
 };
 
 pub const std_options: std.Options = .{ .log_level = .warn };
@@ -92,52 +104,52 @@ pub fn main(init: std.process.Init) !void {
     // first, classify all lines as directive, label, instruction, empty, or dummy
     for (lines) |line| {
         const line_type = classifyLine(std.mem.trimStart(u8, line, "\t"));
-
         try lines_and_types.append(init.arena.allocator(), .{ .type = line_type, .text = line });
     }
 
-    var exported_functions: std.array_hash_map.String(void) = .empty;
-    try findExportedFunctions(lines_and_types.items, &exported_functions, init.arena.allocator());
+    // end
+    var exported_functions: std.array_hash_map.String(Function) = .empty;
+    var labels: std.array_hash_map.String(void) = .empty;
+    try identifyExportedFunctions(lines_and_types.items, &exported_functions, init.arena.allocator());
+    try findFunctions(lines_and_types.items, &exported_functions, &labels, init.arena.allocator());
 
-    var used_labels: std.array_hash_map.String(void) = .empty;
-    try findUsedLabels(lines_and_types.items, &exported_functions, &used_labels, init.arena.allocator());
-
-    if (options.add_intel_directive) _ = try output.writeAll(".intel_syntax noprefix\n");
+    if (options.add_intel_directive) try output.writeAll(".intel_syntax noprefix\n");
     // print constant directives following used labels;
-    var in_used_label = false;
-    for (lines_and_types.items) |line| {
+    var in_label = false;
+    var function: ?Function = null;
+    for (lines_and_types.items, 0..) |line, i| {
         if (options.debug_line_types) {
-            try output.writeAll(switch (line.type) {
-                .directive => "drect",
-                .dummy_export => "dummy",
-                .dummy_export_end => "dummy",
-                .empty => "empty",
-                .instruction => "instr",
-                .label => "label",
-                .comment => "comment",
-            });
-            _ = try output.writeAll("\t");
-            try output.writeAll(line.text);
-            _ = try output.writeAll("\n");
+            try output.print("{s}\t{s}\n", .{ line.type.toString(), line.text });
             continue;
         }
+        if (function) |func| {
+            if (i >= func.end) function = null;
+        }
+
         switch (line.type) {
             .label => {
                 const stripped = std.mem.trimStart(u8, line.text, "\t");
-                const is_used_label = used_labels.contains(stripped[0 .. stripped.len - 1]);
-                const is_exported_function = exported_functions.contains(stripped[0 .. stripped.len - 1]);
-                in_used_label = is_used_label;
-                if (is_used_label or is_exported_function) {
+
+                var is_function = false;
+                if (exported_functions.get(stripped[0 .. stripped.len - 1])) |func| {
+                    function = func;
+                    is_function = true;
+                }
+                in_label = labels.contains(stripped[0 .. stripped.len - 1]);
+
+                if (is_function or in_label) {
                     _ = try output.writeAll(line.text);
                     _ = try output.writeAll("\n");
                 }
             },
             .instruction => {
-                _ = try output.writeAll(line.text);
-                _ = try output.writeAll("\n");
+                if (function != null) {
+                    _ = try output.writeAll(line.text);
+                    _ = try output.writeAll("\n");
+                }
             },
             .directive => {
-                if (in_used_label and isValidDirective(line.text)) {
+                if (in_label and isValidDirective(line.text)) {
                     _ = try output.writeAll(line.text);
                     _ = try output.writeAll("\n");
                 }
@@ -194,57 +206,64 @@ pub fn classifyLine(line: []const u8) LineType {
         return .instruction;
 }
 
-pub fn findExportedFunctions(lines: []const LineAndType, exported_functions: *std.array_hash_map.String(void), alloc: std.mem.Allocator) !void {
+pub const Function = struct {
+    start: usize,
+    end: usize,
+    labels: std.array_hash_map.String(void),
+};
+
+pub fn identifyExportedFunctions(lines: []const LineAndType, exported_functions: *std.array_hash_map.String(Function), alloc: std.mem.Allocator) !void {
     var in_exports: bool = false;
     for (lines) |line| {
         if (in_exports) {
             if (std.mem.startsWith(u8, line.trimmed(), ".quad\t")) {
-                try exported_functions.put(alloc, line.trimmed()[".quad\t".len..], {});
+                try exported_functions.put(alloc, line.trimmed()[".quad\t".len..], undefined);
             } else return;
         }
         if (line.type == .dummy_export) in_exports = true;
     }
 }
 
-pub fn findUsedLabels(lines: []const LineAndType, exported_functions: *const std.array_hash_map.String(void), used_labels: *std.array_hash_map.String(void), alloc: std.mem.Allocator) !void {
+pub fn findFunctions(
+    lines: []const LineAndType,
+    exported_functions: *std.array_hash_map.String(Function),
+    labels: *std.array_hash_map.String(void),
+    alloc: std.mem.Allocator,
+) !void {
     // find function lines
-    var in_function = false;
-    for (lines) |*line| {
+    var current_function: ?*Function = null;
+    for (lines, 0..) |*line, i| {
         switch (line.type) {
-            .label => if (exported_functions.contains(line.trimmed()[0 .. line.trimmed().len - 1])) {
-                std.log.debug("start of function at {s}", .{line.text});
-                std.debug.assert(!in_function);
-                in_function = true;
+            .label => if (exported_functions.getPtr(line.trimmed()[0 .. line.trimmed().len - 1])) |func| {
+                std.debug.assert(current_function == null);
+                func.start = i;
+                current_function = func;
+                std.log.debug("function {s} start: {}", .{ line.text, i });
             },
-            .instruction => {
-                if (in_function) {
-                    var search_index: usize = 0;
-                    while (std.mem.indexOfScalar(u8, line.text[search_index..], '.')) |index| {
-                        if (index == line.text.len - 1) break;
+            .instruction => if (current_function != null) {
+                var search_index: usize = 0;
+                while (std.mem.findScalar(u8, line.text[search_index..], '.')) |index| {
+                    if (index == line.text.len - 1) break;
 
-                        const end_index = blk: for (line.text[index + 1 ..], index + 1..) |char, i| {
-                            if (!std.ascii.isAlphanumeric(char) and char != '_') break :blk i - 1;
-                        } else line.text.len - 1;
+                    const end_index = blk: for (line.text[index + 1 ..], index + 1..) |char, j| {
+                        if (!std.ascii.isAlphanumeric(char) and char != '_') break :blk j - 1;
+                    } else line.text.len - 1;
 
-                        std.log.debug("uses label {s}", .{line.text[index .. end_index + 1]});
-                        try used_labels.put(alloc, line.text[index .. end_index + 1], {});
+                    try labels.put(alloc, line.text[index .. end_index + 1], {});
+                    std.log.debug("uses label {s}", .{line.text[index .. end_index + 1]});
 
-                        search_index = end_index + 1;
-                        if (search_index >= end_index) break;
-                    }
+                    search_index = end_index + 1;
+                    if (search_index >= end_index) break;
                 }
             },
-            .empty => {
-                if (in_function) {
-                    in_function = false;
-                    std.log.debug("function end", .{});
-                    std.log.warn("function ended before .cfi_endproc! did llvm output format change?", .{});
-                }
+            .empty => if (current_function != null) {
+                std.debug.panic("function ended before .cfi_endproc! did llvm output format change?", .{});
             },
-            .directive => {
-                if (in_function and std.mem.eql(u8, line.trimmed(), ".cfi_endproc")) {
-                    in_function = false;
-                    std.log.debug("function end", .{});
+            .directive => if (current_function) |func| {
+                if (std.mem.eql(u8, line.trimmed(), ".cfi_endproc")) {
+                    func.end = i;
+                    current_function = null;
+                    std.log.debug("function {s} end: {}", .{ line.text, i });
                 }
             },
             else => {},
