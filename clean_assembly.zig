@@ -192,7 +192,7 @@ pub fn classifyLine(line: []const u8) LineType {
     if (line.len == 0) return .empty;
     const first = line[0];
     const last = line[line.len - 1];
-    if (std.mem.eql(u8, line, ".quad\tassembly_helper.b74a082f27dda9192b2a26683f0031"))
+    if (std.mem.eql(u8, line, ".quad\tassembly_helper.b74a082f27dda9192b2a26683f0031") or std.mem.eql(u8, line, ".quad\t.Lassembly_helper.b74a082f27dda9192b2a26683f0031"))
         return .dummy_export
     else if (std.mem.startsWith(u8, line, "dummy_export = "))
         return .dummy_export_end
